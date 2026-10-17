@@ -1,0 +1,9 @@
+# Compiled programs
+*.exe
+
+# Compiler-generated object files
+*.o
+*.obj
+
+# Local VS Code settings
+.vscode/
