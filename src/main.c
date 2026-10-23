@@ -1,5 +1,11 @@
+
 #include <stdio.h>
 #include "cooling_controller.h"
+
+typedef struct {
+    int temperature;
+    bool sensor_valid;
+} SensorSample;
 
 int main(void)
 {
@@ -13,20 +19,38 @@ int main(void)
     CoolingController controller;
     cooling_init(&controller, config);
 
-    int temperatures[] = {99, 100, 109, 110, 106, 105, 96, 95};
+    SensorSample samples[] = {
+        {99, true},
+        {100, true},
+        {110, true},
+        {106, true},
+        {105, true},
+        {95, true},
+        {101, false},
+        {92, true},
+        {91, true},
+        {90, true},
+        {200, true},
+        {96, true},
+        {94, true},
+        {93, true}
+    };
 
-    int count = sizeof(temperatures) / sizeof(temperatures[0]);
+    int count = sizeof(samples) / sizeof(samples[0]);
 
     printf("AUTOMOTIVE ENGINE COOLING SIMULATION\n");
     printf("------------------------------------\n");
 
     for (int i = 0; i < count; i++) {
+        cooling_update(&controller,
+                       samples[i].temperature,
+                       samples[i].sensor_valid);
 
-        cooling_update(&controller, temperatures[i]);
-
-        printf("Temperature: %d C | Fan: %s\n",
-               temperatures[i],
-               cooling_state_name(controller.state));
+        printf("Temp: %3d C | Input: %-7s | Fan: %-4s | Fault: %s\n",
+               samples[i].temperature,
+               samples[i].sensor_valid ? "VALID" : "INVALID",
+               cooling_state_name(controller.state),
+               controller.sensor_fault ? "YES" : "NO");
     }
 
     return 0;

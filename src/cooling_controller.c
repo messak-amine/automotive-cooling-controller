@@ -1,15 +1,49 @@
+
 #include "cooling_controller.h"
+
+#define SENSOR_MIN_C (-40)
+#define SENSOR_MAX_C 150
+#define RECOVERY_SAMPLES 3U
 
 void cooling_init(CoolingController *controller, CoolingConfig config)
 {
     controller->state = FAN_OFF;
     controller->config = config;
+    controller->sensor_fault = false;
+    controller->valid_streak = 0;
 }
 
-void cooling_update(CoolingController *controller, int temperature)
+void cooling_update(CoolingController *controller,
+                    int temperature,
+                    bool sensor_valid)
 {
-    switch (controller->state) {
+    bool reading_ok = sensor_valid &&
+                      temperature >= SENSOR_MIN_C &&
+                      temperature <= SENSOR_MAX_C;
 
+    // Invalid sensor reading: activate fail-safe cooling
+    if (!reading_ok) {
+        controller->sensor_fault = true;
+        controller->valid_streak = 0;
+        controller->state = FAN_HIGH;
+        return;
+    }
+
+    // Require three consecutive valid readings to recover
+    if (controller->sensor_fault) {
+        controller->valid_streak++;
+
+        if (controller->valid_streak < RECOVERY_SAMPLES) {
+            controller->state = FAN_HIGH;
+            return;
+        }
+
+        controller->sensor_fault = false;
+        controller->valid_streak = 0;
+    }
+
+    // Normal cooling control
+    switch (controller->state) {
         case FAN_OFF:
             if (temperature >= controller->config.high_on_c) {
                 controller->state = FAN_HIGH;
