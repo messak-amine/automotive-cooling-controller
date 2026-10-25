@@ -1,9 +1,9 @@
 
-# Automotive Engine Cooling Controller
+# Engine Cooling Controller
 
-A small automotive-inspired cooling controller written in C, with temperature monitoring, fan-speed control, sensor fault handling, and automated software tests.
+A modular engine cooling controller developed in Embedded C, featuring two-stage fan regulation using hysteresis, sensor validation, fault handling, and automated unit tests.
 
-The project runs as a PC-based simulation. It demonstrates embedded control logic and software-in-the-loop-style testing without requiring ECU hardware.
+The project demonstrates fundamental embedded software concepts, including state management, threshold-based control, defensive programming, and software verification.
 
 ## Features
 
