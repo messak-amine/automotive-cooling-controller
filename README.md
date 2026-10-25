@@ -61,7 +61,7 @@ When a fault occurs, the controller:
 
 The fault remains active until three consecutive valid readings are received. An invalid reading during recovery resets the counter.
 
-This is a simplified fallback strategy for the simulation, not a production automotive safety mechanism.
+This is a simplified fallback strategy for the simulation, not a production-grade safety mechanism.
 
 ## Project Structure
 
@@ -163,14 +163,14 @@ This table maps the main implemented behaviors to automated test scenarios. It i
 
 ## Limitations
 
-This project is an educational PC simulation, not production ECU software.
+This project is an educational PC simulation, not production embedded firmware.
 
 It does not implement:
 
 - Physical sensor acquisition or fan actuation
 - Real-time scheduling or timing guarantees
-- CAN communication or diagnostic protocols
+- Hardware communication interfaces
 - Hardware failure detection for the fan itself
-- AUTOSAR or ISO 26262 compliance
+- Functional-safety certification or compliance
 
 The fault thresholds and recovery policy were selected for demonstration purposes.
