@@ -1,176 +1,171 @@
+# Engine Cooling Controller
 
-# Automotive Engine Cooling Controller
+A small **Embedded C** project that simulates an engine cooling fan controller on a PC. It uses a finite-state machine, temperature hysteresis, sensor-fault handling, and a hardware abstraction interface to command fan outputs.
 
-A small automotive-inspired cooling controller written in C, with temperature monitoring, fan-speed control, sensor fault handling, and automated software tests.
-
-The project runs as a PC-based simulation. It demonstrates embedded control logic and software-in-the-loop-style testing without requiring ECU hardware.
+The project is automotive-inspired, but it is **not firmware for a real ECU**. It demonstrates control logic and host-based, software-in-the-loop-style testing without a microcontroller or physical fan.
 
 ## Features
 
-- Three fan states: OFF, LOW, and HIGH
-- Configurable temperature thresholds
-- Hysteresis to prevent frequent state switching
-- Detection of invalid or implausible sensor readings
-- High-speed fan fallback during sensor faults
-- Fault recovery after three consecutive valid readings
-- Eight automated test scenarios
-- Continuous integration using GitHub Actions
+- Three fan states: `FAN_OFF`, `FAN_LOW`, and `FAN_HIGH`
+- Configurable temperature thresholds, checked during initialization
+- Two-stage hysteresis to avoid frequent fan switching
+- Simulated PWM commands: **0%**, **50%**, and **100%**
+- Hardware abstraction callbacks for fan PWM and a fault indicator
+- Detection of invalid sensor signals and out-of-range readings
+- HIGH fan fallback during sensor faults
+- Recovery after **three consecutive valid readings**
+- A simplified closed-loop thermal simulation and **10 automated C tests**
+- GitHub Actions workflow for compilation, tests, and Cppcheck analysis
 
-## System Architecture
-
-```mermaid
-flowchart TD
-    A["Simulated temperature sensor"] --> B["Cooling Controller"]
-    B --> C{"Sensor reading valid?"}
-    C -->|No| D["Fault handling"]
-    C -->|Yes| E["Normal control / recovery"]
-    D --> F["Fan HIGH"]
-    E --> G["Fan state machine"]
-    G --> H["OFF / LOW / HIGH"]
-```
-
-The application separates the cooling logic from the simulation. This allows the controller to be tested independently.
-
-## Cooling Logic
-
-The controller uses the following temperature thresholds:
-
-| Transition | Temperature |
-|---|---|
-| OFF to LOW | 100°C |
-| LOW to OFF | 95°C |
-| LOW to HIGH | 110°C |
-| HIGH to LOW | 105°C |
-
-When the fan is OFF, a temperature of 110°C or above activates HIGH directly.
-
-Hysteresis prevents unnecessary fan switching when the temperature fluctuates near a threshold.
-
-## Sensor Fault Handling
-
-The controller treats a reading as invalid when:
-
-- The simulated sensor reports invalid data.
-- The temperature is outside the plausible range of -40°C to 150°C.
-
-When a fault occurs, the controller:
-
-1. Sets the sensor fault flag.
-2. Resets the recovery counter.
-3. Commands the fan to HIGH.
-
-The fault remains active until three consecutive valid readings are received. An invalid reading during recovery resets the counter.
-
-This is a simplified fallback strategy for the simulation, not a production automotive safety mechanism.
-
-## Project Structure
+## Architecture
 
 ```text
-include/
-  cooling_controller.h       Controller types and function declarations
-
-src/
-  cooling_controller.c       Cooling logic and fault handling
-  main.c                     Temperature simulation
-
-tests/
-  test_cooling_controller.c  Automated tests
-
-.github/workflows/
-  ci.yml                     Continuous integration
+Simulated thermal plant
+         |
+         v
+Temperature + sensor validity
+         |
+         v
++------------------------------+
+| Cooling controller (C)       |
+| - configuration validation   |
+| - state machine + hysteresis |
+| - sensor fault / recovery    |
++------------------------------+
+         |
+         v
+  HAL callbacks (mocked on PC)
+         |
+         +--> PWM command (0 / 50 / 100%)
+         +--> Fault indicator (ON / OFF)
+         |
+         v
+ Simulated cooling effect
+         |
+         +---- feedback to thermal plant
 ```
 
-## Build and Run
+The controller is in `src/cooling_controller.c`. The PC simulation in `src/main.c` supplies temperatures and receives outputs through callback functions. This separation makes the control logic testable without hardware and allows a future target-specific driver to implement the same interface.
 
-### Requirements
+### Fan states and hysteresis
 
-- GCC compiler with C11 support
-- Windows CMD or a Linux terminal
-- No external C libraries
+Default configuration:
 
-### Windows
+| Transition | Temperature | PWM after transition |
+|---|---:|---:|
+| OFF → LOW | 100°C or higher | 50% |
+| LOW → OFF | 95°C or lower | 0% |
+| LOW → HIGH | 110°C or higher | 100% |
+| HIGH → LOW | 105°C or lower | 50% |
 
-Compile the simulation:
+The controller can also move directly from OFF to HIGH at 110°C or above, or from HIGH to OFF at 95°C or below. Because of hysteresis, a temperature alone does not always determine the state: the **previous state matters**.
 
-```cmd
-gcc -std=c11 -Wall -Wextra -Werror -Iinclude src\main.c src\cooling_controller.c -o cooling_sim.exe
+The defaults are for demonstration. They are not calibrated for a particular vehicle.
+
+### Configuration checks
+
+`cooling_init()` rejects null arguments and threshold configurations that do not satisfy:
+
+```text
+low_off_c < low_on_c < high_off_c < high_on_c
 ```
 
-Run it:
+It also requires the lowest OFF threshold to be above -40°C and the highest ON threshold to be below 150°C. A valid configuration initializes the controller in `FAN_OFF`.
 
-```cmd
-cooling_sim.exe
+### Sensor faults and recovery
+
+A reading is considered invalid if `sensor_valid` is false or the measured temperature is outside **-40°C to 150°C** (inclusive).
+
+On an invalid reading, the controller sets `sensor_fault`, resets its valid-reading counter, and commands `FAN_HIGH` (100% PWM). The fault indicator callback is set to ON when registered.
+
+The fault clears only after **three consecutive valid updates**. At that point, the controller evaluates the normal hysteresis rules starting from HIGH:
+
+| Temperature at recovery | Result |
+|---|---|
+| 95°C or below | OFF |
+| Above 95°C through 105°C | LOW |
+| Above 105°C | Remains HIGH |
+
+A new invalid reading during recovery restarts the counter. The HIGH fallback is an educational policy, **not** a validated functional-safety mechanism.
+
+### Closed-loop simulation
+
+`src/main.c` runs a deterministic 20-step simulation. It changes a simplified heating rate, subtracts cooling based on the previous fan state, and feeds the resulting temperature back into the controller. It also injects a sensor signal fault and an out-of-range measurement.
+
+The simulation prints the step, heating rate, measured temperature, sensor status, fan state, PWM command, and fault indicator. The thermal model is intentionally simple; it is not a physically calibrated engine model.
+
+## Project structure
+
+```text
+.github/workflows/ci.yml       GitHub Actions workflow
+include/cooling_controller.h   Public types and controller API
+src/cooling_controller.c       State machine, fault logic, HAL outputs
+src/main.c                     PC thermal simulation and mock hardware
+tests/test_cooling_controller.c C assertion-based unit tests
+Makefile                        Build and test commands
+.gitignore                      Generated files excluded from Git
+LICENSE                         MIT license
+README.md                       Project documentation
 ```
 
-### Linux
+## Build and run
+
+**Requirements:** a C11-capable GCC compiler and GNU Make. No third-party C libraries or real hardware are required. The steps below were exercised on Windows using GCC and GNU Make through Git Bash.
+
+From the project root:
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Werror -Iinclude src/main.c src/cooling_controller.c -o cooling_sim
-./cooling_sim
+make test   # Build and run the 10 unit tests
+make sim    # Build and run the 20-step simulation
+make clean  # Remove generated binaries and object files
 ```
 
-## Automated Testing
-
-The project includes eight tests covering:
-
-1. Normal fan operation
-2. Low-speed hysteresis
-3. High-speed hysteresis
-4. Direct HIGH activation
-5. Sensor failure
-6. Implausible temperature
-7. Fault recovery
-8. Interrupted recovery
-
-### Run tests on Windows
-
-```cmd
-gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests\test_cooling_controller.c src\cooling_controller.c -o cooling_tests.exe
-cooling_tests.exe
-```
-
-### Run tests on Linux
+Alternatively, compile the test executable directly:
 
 ```bash
-gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_cooling_controller.c src/cooling_controller.c -o cooling_tests
+gcc -std=c11 -Wall -Wextra -Werror -Iinclude \
+  tests/test_cooling_controller.c src/cooling_controller.c -o cooling_tests
 ./cooling_tests
 ```
 
-The expected result is:
+On Windows, the compiled executable can have an `.exe` suffix. The expected test summary is:
 
 ```text
-All 8 tests passed.
+All cooling controller unit tests passed (10/10).
 ```
 
-The tests use standard C assertions, without an external testing framework.
+## Automated tests
 
-GitHub Actions also compiles the simulation and executes the tests on Ubuntu whenever changes are pushed to `main` or a pull request targets `main`.
+The project uses standard C `assert()` calls, with no external test framework.
 
-## Requirements and Test Coverage
-
-| ID | Requirement | Test |
+| ID | Test function | Behavior checked |
 |---|---|---|
-| R1 | Activate LOW cooling at 100°C | Normal operation |
-| R2 | Apply LOW hysteresis | Low-speed hysteresis |
-| R3 | Apply HIGH hysteresis | High-speed hysteresis |
-| R4 | Support direct HIGH activation | Direct high-speed activation |
-| R5 | Detect invalid sensor readings | Sensor failure |
-| R6 | Reject implausible temperatures | Invalid temperature |
-| R7 | Recover after three valid readings | Fault recovery |
-| R8 | Restart recovery after another fault | Interrupted recovery |
+| R1 | `test_config_validation` | Valid configuration, invalid threshold ordering, null arguments |
+| R2 | `test_normal_operation` | Normal OFF / LOW / HIGH transitions |
+| R3 | `test_low_hysteresis` | LOW-stage hysteresis |
+| R4 | `test_high_hysteresis` | HIGH-stage hysteresis |
+| R5 | `test_direct_high_activation` | Direct OFF → HIGH transition |
+| R6 | `test_sensor_failure` | Invalid sensor signal and HIGH fallback |
+| R7 | `test_invalid_temperature` | Values outside the valid sensor range |
+| R8 | `test_fault_recovery` | Three valid readings and recovery across temperature bands |
+| R9 | `test_interrupted_recovery` | Recovery counter resets after a new invalid reading |
+| R10 | `test_state_getters_and_hal` | State accessors and mock PWM/fault callbacks |
 
-This table maps the main implemented behaviors to automated test scenarios. It is not evidence of complete requirements coverage.
+The CI workflow runs the tests and simulation and performs Cppcheck static analysis on pushes to `main` and pull requests targeting `main`.
+
+These tests check selected behaviors; they do not establish exhaustive coverage or functional-safety compliance.
 
 ## Limitations
 
-This project is an educational PC simulation, not production ECU software.
+This is a **PC-based educational simulation**, not a production-ready ECU implementation.
 
-It does not implement:
+- No real temperature sensor, PWM peripheral, fan motor, or fault LED is connected.
+- HAL callbacks only demonstrate a possible hardware interface; no MCU driver is provided.
+- The thermal plant is simplified, with no calibrated physics or realistic sensor noise.
+- Calls to `cooling_update()` are simulated steps, not a real-time scheduler with timing guarantees.
+- No CAN communication, diagnostics protocol, or physical fan-failure monitoring is implemented.
+- The project does not implement or claim AUTOSAR or ISO 26262 compliance.
 
-- Physical sensor acquisition or fan actuation
-- Real-time scheduling or timing guarantees
-- CAN communication or diagnostic protocols
-- Hardware failure detection for the fan itself
-- AUTOSAR or ISO 26262 compliance
+## License
 
-The fault thresholds and recovery policy were selected for demonstration purposes.
+MIT — see [LICENSE](LICENSE).
