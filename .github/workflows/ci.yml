@@ -1,11 +1,10 @@
-
-name: C Build and Tests
+name: C Build & Test
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -18,11 +17,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Compile simulation
-        run: gcc -std=c11 -Wall -Wextra -Werror -Iinclude src/main.c src/cooling_controller.c -o cooling_sim
+      - name: Install static analysis tool
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
 
-      - name: Compile unit tests
-        run: gcc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_cooling_controller.c src/cooling_controller.c -o cooling_tests
+      - name: Run static analysis
+        run: cppcheck --enable=warning,style,performance,portability --error-exitcode=1 -I include src tests
 
-      - name: Run unit tests
-        run: ./cooling_tests
+      - name: Build and run unit tests
+        run: make test
+
+      - name: Build and run thermal simulation
+        run: make sim
