@@ -1,9 +1,14 @@
-# Compiled programs
+# Binaries
+cooling_sim
+cooling_tests
 *.exe
 
-# Compiler-generated object files
+# Object & coverage files
 *.o
 *.obj
+*.gcda
+*.gcno
+*.gcov
 
-# Local VS Code settings
+# Editor folders
 .vscode/
